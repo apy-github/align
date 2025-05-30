@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools",]
+#requires = ["setuptools","cython","numpy"]
+build-backend = "setuptools.build_meta"
+[project]
+name='alignment'
+version='0.0.0'
+dynamic = ["dependencies"]
+requires-python = ">=3.9"
+authors = [
+  {name = "Adur Pastor Yabar", email = "adur.pastor@astro.su.se"}
+]
+maintainers = [
+  {name = "Adur Pastor Yabar", email = "adur.pastor@astro.su.se"}
+]
+description='Python library to align tumag data (it should be generalizable easily...).'
+readme = "README.md"
+license = {file = "LICENSE"}
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+########[project.urls]
+########Repository ='https://github.com/apy-github/NESSI'
+#
+#include-package-data = true
+#
+# From: https://setuptools.pypa.io/en/latest/userguide/quickstart.html
+#[tool.setuptools.packages]
+#find = {}  # Scan the project directory with the default parameters
+
+#[tool.setuptools.packages.find]
+#where = ["src"]
+
+##[tool.setuptools.packages.find]
+### All the following settings are optional:
+##where = ["netFIRTEZ_dz"]  # ["."] by default
+##include = ["aux*"]  # ["*"] by default
+###exclude = ["mypackage.tests*"]  # empty by default
+###namespaces = false  # true by default
+
+
