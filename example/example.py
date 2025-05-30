@@ -1,7 +1,7 @@
 
 from glob import glob as ls
 
-from auxiliars import walign, talign
+from alignment import walign, talign
 
 if (__name__=="__main__"):
 
