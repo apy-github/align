@@ -91,6 +91,18 @@ def to_minimize(p, y, fmodel, fargs, fkwargs, unc):
 
   return res
 
+def uto_minimize(up, u2d, y, fmodel, fargs, fkwargs, unc):
+
+  dp = up * u2d[:,0] + u2d[:,1]
+  model = fmodel(dp, *fargs, **fkwargs)
+
+  #res = np.nansum((y-model)**2)*unc
+  res = np.nanmean((y-model)**2)*unc
+
+  #print(res, p)
+
+  return res
+
 def to_minimize_corr(p, y, fmodel, fargs, fkwargs):
 
   model = fmodel(p, *fargs, **fkwargs)
@@ -99,6 +111,17 @@ def to_minimize_corr(p, y, fmodel, fargs, fkwargs):
   res = - np.abs(pearsonr(y[mask==mask], model[mask==mask])[0])
 
   return res
+
+def uto_minimize_corr(up, u2d, y, fmodel, fargs, fkwargs):
+
+  dp = up * u2d[:,0] + u2d[:,1]
+  model = fmodel(dp, *fargs, **fkwargs)
+
+  mask = model+y
+  res = - np.abs(pearsonr(y[mask==mask], model[mask==mask])[0])
+
+  return res
+ 
  
 def _rebin(im,rr=1):
 
@@ -148,9 +171,10 @@ def pwalign(files, overwrite=False,fovsize=300,istokes = 3, writeoffsets=False, 
   for i in range(NUMBER_OF_PROCESSES):
       Process(target=worker, args=(task_queue, done_queue)).start()
   
-#  # Get and print results
-#  for i in range(len(TASKS)):
-#      print('\t', done_queue.get())
+  # Get and print results
+  for i in range(len(TASKS)):
+      done_queue.get()
+      #print('\t', done_queue.get())
   
   # Tell child processes to stop
   for i in range(NUMBER_OF_PROCESSES):
@@ -162,6 +186,7 @@ def walign(files, overwrite=False,fovsize=300,istokes = 3, writeoffsets=False):
 
   from scipy import optimize
   import time as tm
+  from copy import deepcopy as cp
 
   ntimes = len(files)
   assert ntimes>0
@@ -187,8 +212,10 @@ def walign(files, overwrite=False,fovsize=300,istokes = 3, writeoffsets=False):
 
     offsets = np.zeros((tmp.shape[0],3),dtype="f8") + np.nan
 
+    print("\n%s\n" % (files[itime]))
+
     for iw in range(tmp.shape[0]-1):
-      print("\ttime=%4i/%4i ; wavelength=%2i/%2i ; reamining ~ %20.5f sec." % (itime,ntimes-1,iw,tmp.shape[0]-2,(ntimes-itime)*(totdt/np.max([totts,1.])),), flush=True,end='\r')
+#      print("\ttime=%4i/%4i ; wavelength=%2i/%2i ; remaining ~ %20.5f sec." % (itime,ntimes-1,iw,tmp.shape[0]-2,(ntimes-itime)*(totdt/np.max([totts,1.])),))#, flush=True,end='\r')
 
       isub = _rebin(_normalize(tmp[iw+1,istokes,:,:]), rr=rr)
 
@@ -205,69 +232,35 @@ def walign(files, overwrite=False,fovsize=300,istokes = 3, writeoffsets=False):
       tt1 = tm.time()
       bounds = [(-25./rr,25./rr),(-25./rr,25./rr),(-10.,10.)]
       eps = [1.e-3 * (i[1]-i[0]) for i in bounds]
-#:>:
-#:>:
-#:>:
-#:>:      tres = minimize(to_minimize_corr, [0.,0.,0.], args=minim_args, bounds=bounds, method="Powell",options={"xtol":0.1,"ftol":0.1})
-#:>:      #res = minimize(to_minimize_corr, tres.x, args=minim_args, bounds=bounds, method="L-BFGS-B",)
-#:>:      initial_simplex = np.random.rand(len(tres.x)+1,len(tres.x))
-#:>:      initial_simplex[:,0:2] /= rr 
-#:>:      initial_simplex = initial_simplex + tres.x[None,:]
-#:>:      res = minimize(to_minimize_corr, tres.x, args=minim_args, bounds=bounds, method="Nelder-Mead",options={"fatol":np.abs(tres.fun)*1.e-3, "initial_simplex":initial_simplex})
-#:>:
-#:>:
-#:>:      tt1b = tm.time()
-#
-#
-#:>:
-#:>:      funcs = []
 
-#::>>::      ff = 5
-#::>>::
-#::>>::      bisub = _rebin(_normalize(tmp[iw+1,istokes,:,:]), rr=ff*rr)
-#::>>::      biref = _rebin(_normalize(tmp[iw2,istokes,:,:]), rr=ff*rr)
-#::>>::      bminim_args = (biref,rotate_shift, (bisub,),{},)  
-#::>>::
-#::>>::      bbounds = [(bounds[0][0]/ff,bounds[0][1]/ff),(bounds[1][0]/ff,bounds[1][1]/ff),(-10.,10.)]
-#::>>::
-#::>>::      #initial_simplex = np.random.rand(len(tres.x)+1,len(tres.x))
-#::>>::      #for i in range(len(bbounds)):
-#::>>::      #  initial_simplex[:,i] = initial_simplex[:,i] * (bbounds[i][1] - bbounds[i][0]) + bbounds[i][0]
-#::>>::
-#::>>::      #tbres = minimize(to_minimize_corr, [0.,0.,0.], args=bminim_args, bounds=bbounds, method="Nelder-Mead",options={"fatol":1.e-1, "initial_simplex":initial_simplex})
-#::>>::      #tbres2 = optimize.direct(to_minimize_corr, bbounds, args=bminim_args, maxfun=30000, vol_tol=1.e-1)
-#::>>::      tbres2 = optimize.direct(to_minimize_corr, bbounds, args=bminim_args, maxfun=300000, maxiter=100000, vol_tol=1.e-3)
+      # Initial guess:
+      u2d = np.hstack([np.diff(np.array(bounds), axis=1), np.min(np.array(bounds), axis=1).reshape(-1,1)])
+      ubounds = [(0.,1.),] * len(bounds)
+      uminim_args = (u2d, iref,rotate_shift, (isub,),{},)  
 
-      tbres2 = minimize(to_minimize_corr, [0,0,0,], args=minim_args, bounds=bounds, options={"eps":eps,})
+      tbres2 = minimize(uto_minimize_corr, [0.5,]*len(ubounds), args=uminim_args, bounds=ubounds, method="Powell")
 
+      # Reduce bounds and use Nelder-Mead:
       nbounds = []
+      x0g = tbres2.x*u2d[:,0]+u2d[:,1]
       for j, i in enumerate(bounds):
-        #fact = ff if j<2 else 1
-        nbounds.append((i[0]/5. + tbres2.x[j],i[1]/5. + tbres2.x[j]))
+        dbound = (i[1] - i[0])/5
+        nbounds.append((x0g[j]-dbound, x0g[j]+dbound))
 
-      #initial_simplex = np.random.rand(len(tbres2.x)+1,len(tbres2.x))
-      #for i in range(len(nbounds)):
-      #  initial_simplex[:,i] = initial_simplex[:,i] * (nbounds[i][1] - nbounds[i][0]) + nbounds[i][0]
-      #res = minimize(to_minimize_corr, [0,0,0,], args=minim_args, bounds=nbounds, method="Nelder-Mead",options={"xatol":1.e-5, "initial_simplex":initial_simplex})
-      res = minimize(to_minimize_corr, tbres2.x, args=minim_args, bounds=nbounds, method="Nelder-Mead",options={"xatol":1.e-5, "maxiter":10000, "maxfev":10000})
+      # Ubounds remains the same (0,1) but transformation from adimensional to dimensional changes:
+      nu2d = np.hstack([np.diff(np.array(nbounds), axis=1), np.min(np.array(nbounds), axis=1).reshape(-1,1)])
+      ubounds = [(0.,1.),] * len(nbounds)
+      uminim_args = (nu2d, iref,rotate_shift, (isub,),{},)  
 
+      # Final refinement:
+      res = minimize(uto_minimize_corr, tbres2.x, args=uminim_args, bounds=ubounds, method="Nelder-Mead",options={"xatol":1.e-5, "maxiter":10000, "maxfev":10000})
 
-#:>:      tt2c = tm.time()
-#:>:
-#:>:      print("\n"*2)
-#:>:      for j, i in enumerate(nbounds):
-#:>:        print(i[0], bres2.x[j], i[1])
-#:>:      print(res.x, res.fun, tt1b-tt1, ":", bres2.x, bres2.fun, tt2c-tt2b, ":", bres2.fun<res.fun)
-#:>:
-#:>:      import pdb
-#:>:      pdb.set_trace()
-#
-#
+      res.x = res.x*nu2d[:,0]+nu2d[:,1]
+
 
       # Check boundaries:
       success = res.success
       for i in range(res.x.size):
-        fact = rr if i<2 else 1.
         db = bounds[i][1] - bounds[i][0]
         t0 = np.abs(bounds[i][0]-res.x[i])/db
         t1 = np.abs(bounds[i][1]-res.x[i])/db
@@ -300,6 +293,7 @@ def walign(files, overwrite=False,fovsize=300,istokes = 3, writeoffsets=False):
 
     tt2 = tm.time()
     totdt += (tt2-tt0)
+    print("\n%s [%.4f sec.] \n" % (files[itime], tt2-tt0,))
     totts += 1
     np.save(oname, tmp)
 
@@ -350,74 +344,31 @@ def talign(files, overwrite=False, fovsize=300, istokes=0, writeoffsets=False):
 
       nas, naf = iref.shape
       bounds = [(-(nas//2),nas//2),(-(naf//2),naf//2),(-90.,90.)]
-      minim_args = (iref,rotate_shift, (isub,),{},1.)#/np.nansum(iref*iref*0.01*0.01))  
+#
+#
+      # Initial guess:
+      u2d = np.hstack([np.diff(np.array(bounds), axis=1), np.min(np.array(bounds), axis=1).reshape(-1,1)])
+      ubounds = [(0.,1.),] * len(bounds)
+      uminim_args = (u2d, iref,rotate_shift, (isub,),{},1.)  
 
+      tbres2 = minimize(uto_minimize, [0.5,]*len(ubounds), args=uminim_args, bounds=ubounds, method="Powell")
 
-
-
-##
-##      tt1 = tm.time()
-##
-##      #initial_simplex = np.random.rand(len(bounds)+1,len(bounds))
-##      #for i in range(len(bounds)):
-##      #  initial_simplex[:,i] = initial_simplex[:,i] * (bounds[i][1] - bounds[i][0]) + bounds[i][0]
-##
-##      #res = minimize(to_minimize, [0.,0.,0.], args=minim_args, bounds=bounds, method="Nelder-Mead", options={"xatol":0.1, "fatol":0.1,"initial_simplex":initial_simplex})#,"ftol":1.e-8})
-##      tres = minimize(to_minimize, [0.,0.,0.], args=minim_args, bounds=bounds, method="Powell", options={"xtol":0.1, "ftol":0.1})#,"ftol":1.e-8})
-##
-##      #initial_simplex = np.random.randn(len(tres.x)+1,len(tres.x)) + tres.x[None,:]
-##      initial_simplex = np.random.randn(len(tres.x)+1,len(tres.x))
-##      initial_simplex[:,0:2] /= rr 
-##      initial_simplex = initial_simplex + tres.x[None,:]
-##      res = minimize(to_minimize, tres.x, args=minim_args, bounds=bounds, method="Nelder-Mead", options={"xatol":1.e-6,"fatol":np.abs(tres.fun)*1.e-3,"initial_simplex":initial_simplex, "maxfev":100000, "maxiter":100000})#,"ftol":1.e-8})
-##
-##
-##      tt2 = tm.time()
-##
-##
-
-      tbres2 = optimize.direct(to_minimize, bounds, args=minim_args, maxfun=300000, maxiter=100000, vol_tol=1.e-12)
-
-##      for i in range(11):
-##        tbres2 = optimize.direct(to_minimize, bounds, args=minim_args, maxfun=300000, maxiter=100000, vol_tol=np.power(10., -(1+i)))
-##        print(np.power(10., -(1+i)), tbres2.fun)
-      #tbres2 = optimize.direct(to_minimize, bounds, args=minim_args, maxfun=300000, maxiter=100000, vol_tol=1.e-5)
-      #bminim_args = (biref,rotate_shift, (bisub,),{},)
-      #tbres2b = optimize.direct(to_minimize_corr, bbounds, args=bminim_args, maxfun=300000, maxiter=100000, vol_tol=1.e-5)
-
+      # Reduce bounds and use Nelder-Mead:
       nbounds = []
+      x0g = tbres2.x*u2d[:,0]+u2d[:,1]
       for j, i in enumerate(bounds):
-        nbounds.append((i[0]/5. + tbres2.x[j],i[1]/5. + tbres2.x[j]))
-      initial_simplex = np.random.rand(len(tbres2.x)+1,len(tbres2.x))
-      for i in range(len(nbounds)):
-        initial_simplex[:,i] = initial_simplex[:,i] * (nbounds[i][1] - nbounds[i][0]) + nbounds[i][0]
-      res = minimize(to_minimize, tbres2.x, args=minim_args, bounds=nbounds, method="Nelder-Mead",options={"xatol":1.e-3, "initial_simplex":initial_simplex})
+        dbound = (i[1] - i[0])/5
+        nbounds.append((x0g[j]-dbound, x0g[j]+dbound))
 
+      # Ubounds remains the same (0,1) but transformation from adimensional to dimensional changes:
+      nu2d = np.hstack([np.diff(np.array(nbounds), axis=1), np.min(np.array(nbounds), axis=1).reshape(-1,1)])
+      ubounds = [(0.,1.),] * len(nbounds)
+      uminim_args = (nu2d, iref,rotate_shift, (isub,),{},1.,)  
 
-##      tt3 = tm.time()
-##
-##      print("\n\n\n", res.fun, tt2-tt1, ":", bres.fun, tt3-tt2, "\n\n\n")
-##
-##
-##      import pdb
-##      pdb.set_trace()
-##
+      # Final refinement:
+      res = minimize(uto_minimize, tbres2.x, args=uminim_args, bounds=ubounds, method="Nelder-Mead",options={"xatol":1.e-5, "maxiter":10000, "maxfev":10000})
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      res.x = res.x*nu2d[:,0]+nu2d[:,1]
 
 
       if (res.success):
